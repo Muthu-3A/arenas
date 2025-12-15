@@ -1,6 +1,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 #define PushArray(arena, type, count) (type *)ArenaPush((arena), sizeof(type)*(count))
 #define PushArrayZero(arena, type, count) (type *)ArenaPushZero((arena), sizeof(type)*(count))
@@ -30,7 +31,7 @@ void ArenaClear(Arena *arena);
 
 Arena *ArenaAlloc(void) {
     Arena *arena = malloc(sizeof *arena);
-    if(!arena) {
+    if(!arena) { //sequential dependencies
         return NULL; //allocation failed
     }
 
@@ -40,10 +41,10 @@ Arena *ArenaAlloc(void) {
         return NULL; //allocation failed
     }
 
-    arena->capacity = ArenaDefaultCapacity
+    arena->capacity = ArenaDefaultCapacity;
     arena->offset = 0;
 
-    return arena
+    return arena;
 }
 
 void ArenaRelease(Arena *arena) {
@@ -51,65 +52,60 @@ void ArenaRelease(Arena *arena) {
 }
 
 void *ArenaPush(Arena *arena, size_t size) {
-    if(!arena || size == 0) {
-        return NULL; //invalid function call
+    if(arena && size != 0 && arena->capacity - arena->offset >= size) {
+        void *ptr = arena->base + arena->offset;
+        arena->offset += size;
+        return ptr;
     }
-
-    if(arena->capacity - arena->offset < size) {
-        return NULL; //cannot allocate required memory
-    }
-
-    void *ptr = arena->base + arena->offset;
-    arena->offset += size;
-    return ptr
 }
 
 void *ArenaPushZero(Arena *arena, size_t size) {
-    if(!arena || size == 0) {
-        return NULL;
+    if(arena && size != 0 && arena->capacity - arena->offset >= size) {
+        void *ptr = arena->base + arena->offset;
+        arena->offset += size;
+        memset(ptr, 0, size); //zero the allocated memory
+        return ptr;
     }
-
-    if(arena->capacity - arena->offset < size) {
-        return NULL;
-    }
-
-    void *ptr = arena->base + arena->offset;
-    arena->offset += size;
-
-    memset(ptr, 0, size); //zero the allocated memory
-    return ptr
 }
 
 void ArenaPop(Arena *arena, size_t size) {
-    if(!arena || size == 0) {
-        return NULL;
+    if (arena && size && arena->offset >= size) {
+        arena->offset -= size;
     }
-
-    if(size > arena->offset) {
-        //could set offset to 0 but want concious ArenaClear to be used for that
-        return NULL;  // so in this implementation we catch arena accounting mistakes
-    }
-    
-    arena->offset -= size;  
 }
 size_t ArenaGetPos(Arena *arena) {
-    if(!arena) return;
-    return arena->offset;
+    if(arena) {
+        return arena->offset;
+    }
+    return SIZE_MAX;
 }
 
 void ArenaGetPosBack(Arena *arena, size_t pos) {
-    if(!arena || pos > arena->offset) {
-        return; //invalid
+    if(arena && pos == !SIZE_MAX && pos <= arena->offset) {
+        arena->offset = pos;
     }
-
-    arena->offset = pos;
 }
 
 void ArenaClear(Arena *arena) {
-    if(!arena) return;
-    arena->offset = 0;
+    if(arena) {
+        arena->offset = 0;
+    }
 }
 
 int main() {
+    Arena *listy = ArenaAlloc();
+    if(!listy) return 1;
+
+    int *ptr = ArenaPush(listy, sizeof(int[10]));
+    if(!ptr) return 1;
+
+    *ptr = 3;
+    *(ptr + 1) = 4;
+    
+    printf("%d\n", *ptr);
+    printf("%d\n", *(ptr+1));
+
+    ArenaClear(listy);
+
     return 0;
 }
